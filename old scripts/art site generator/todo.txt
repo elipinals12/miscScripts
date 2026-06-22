@@ -1,0 +1,16 @@
+todo:
+maybe add better device support
+make about 8 images load at a time, then the rest fade out, and scrolling brings them in
+FIX BACK BUTTON
+
+maybe add subcatagories
+
+
+notes with golda:
+center nav bar
+check bio
+change font
+
+
+make copyright footer always on bottom of ALL pages
+add png support to auto sort batch

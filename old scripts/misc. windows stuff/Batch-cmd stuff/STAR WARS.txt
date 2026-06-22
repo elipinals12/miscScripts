@@ -1,0 +1,7 @@
+Control Panel › Programs › Turn Windows Feature On or Off
+and ticking both the telnet check boxes
+
+
+telnet
+o
+towel.blinkenlights.nl

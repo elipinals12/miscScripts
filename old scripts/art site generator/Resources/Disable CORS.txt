@@ -1,0 +1,10 @@
+how to disable CORS:
+
+OSX:
+open -n -a /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --args --user-data-dir="/tmp/chrome_dev_test" --disable-web-security
+
+Windows:
+“Program Files (x86)\Google\Chrome\Application\chrome.exe” –-allow-file-access-from-files — disable-web-security — user-data-dir — disable-features=CrossSiteDocumentBlockingIfIsolating
+
+Linux:
+create a quick test server by navigating to the website, saying "python -m SimpleHTTPServer", then navigating to localhost:8000 while keeping the python window open

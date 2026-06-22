@@ -1,0 +1,1 @@
+powershell.exe -ExecutionPolicy Bypass -File ".\autoclicker.ps1"

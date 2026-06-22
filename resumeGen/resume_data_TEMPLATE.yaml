@@ -1,0 +1,184 @@
+# Resume Data - BLANK TEMPLATE
+# Same structure as resume_data.yaml. Fill in fields; leave "TODO"/empty to skip.
+# List sections may have as many items as needed (one stub shown per list).
+# Tags drive filtering in resume_generator.py (INCLUDE_TAGS / EXCLUDE_TAGS_FOR_TECH).
+
+personal:
+  full_name: ""
+  preferred_name: ""
+  date_of_birth: ""
+
+  contact:
+    email: ""
+    phone: ""
+
+    addresses:
+      - type: "mailing"
+        street: ""
+        city: ""
+        state: ""
+        zip: ""
+        country: ""
+      - type: "main"        # "main" address city/state is shown on the header line
+        street: ""
+        city: ""
+        state: ""
+        zip: ""
+        country: ""
+
+  availability:
+    in_person: ""
+    online: ""
+
+  links:
+    linkedin:
+      label: "LinkedIn"
+      url: ""
+    github:
+      label: "GitHub"
+      url: ""
+    websites:
+      - label: ""
+        url: ""
+
+education:
+  title: "Education"
+  items:
+    - institution: ""
+      degree: ""
+      field_of_study: ""
+      location:
+        city: ""
+        state: ""
+        country: ""
+      start_date: ""
+      end_date: ""
+      gpa: ""
+      honors:
+        - ""
+      relevant_coursework:
+        - name: ""
+          tags: []
+      activities:
+        - name: ""
+          tags: []
+      details:
+        - ""
+      projects:
+        - name: ""
+          description: ""
+          tags: []
+
+work_experience:
+  title: "Experience"
+  items:
+    - company: ""
+      positions:
+        - title: ""
+          tags: []
+          location:
+            remote: false
+            city: ""
+            state: ""
+            country: ""
+          start_date: ""
+          end_date: ""
+          employment_type: ""
+          supervisor_or_reference:
+            name: ""
+            title: ""
+            email: ""
+            phone: ""
+            relationship: ""
+          details:
+            - ""
+          links:
+            - ""
+
+volunteer_experience:
+  title: "Volunteer Experience"
+  items:
+    - organization: ""
+      role: ""
+      tags: []
+      location:
+        city: ""
+        state: ""
+        country: ""
+      dates:
+        - ""
+      details:
+        - ""
+
+skills:
+  title: "Skills"
+  categories:
+    programming_languages:
+      - ""
+    frameworks_tools:
+      - ""
+    technical_areas:
+      - ""
+    soft_skills:
+      - ""
+
+achievements:
+  title: "Achievements"
+  items:
+    - title: ""
+      organization: ""
+      tags: []
+      date: ""
+      description: ""
+      reference:
+        name: ""
+        email: ""
+        url: ""
+
+personal_projects:
+  title: "Projects"
+  items:
+    - name: ""
+      description: ""
+      tags: []
+      start_date: ""
+      end_date: ""
+      status: ""
+      technologies:
+        - ""
+      links:
+        repo: ""
+        demo: ""
+        docs: ""
+      details:
+        - ""
+
+hobbies:
+  title: "Hobbies"
+  items:
+    - name: ""
+      tags: []
+      description: ""
+
+blurbs:
+  default: ""
+  software_engineering: ""
+  ai_ml: ""
+  research: ""
+  creative: ""
+  tech_professional: ""
+  personal_statements:
+    - type: ""
+      text: ""
+
+references:
+  title: "References"
+  note: "References available upon request"
+  contacts:
+    - name: ""
+      title: ""
+      organization: ""
+      email: ""
+      phone: ""
+      relationship: ""
+      notes: ""
