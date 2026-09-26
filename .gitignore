@@ -8,3 +8,4 @@ APOD/ol_AI_output/
 resumeGen/ol/
 resumeGen/resume_data.yaml
 resumeGen/Eli Pinals Resume.pdf
+__pycache__/

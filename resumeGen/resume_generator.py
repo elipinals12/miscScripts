@@ -4,11 +4,13 @@ Resume Generator: YAML -> LaTeX -> PDF
 Compact, minimalist CS resume builder with tag filtering support.
 """
 
+import re
 import yaml
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 # ============================================================================
 # CONFIGURATION
@@ -21,8 +23,7 @@ TECH_FOCUS = True
 KEEP_SECTIONS_TOGETHER = True
 
 INCLUDE_SECTIONS = {
-    "blurbs", "education", "work_experience", "volunteer_experience",
-    "skills", "personal_projects", "achievements", "hobbies",
+    "blurbs", "education", "work_experience", "personal_projects", "skills", "achievements", "volunteer_experience", "hobbies",
 }
 
 INCLUDE_TAGS = {
@@ -38,7 +39,7 @@ INCLUDE_TAGS = {
 
 EXCLUDE_TAGS_FOR_TECH = {"exclude_tech"}
 
-ACTIVE_BLURB = "tech_professional"
+ACTIVE_BLURB = "long_heart2heart"
 
 OUTPUT_DIR = Path.cwd()
 OUTPUT_NAME = "Eli Pinals Resume"
@@ -100,6 +101,36 @@ def should_include_item(item: Dict) -> bool:
     return any(t in INCLUDE_TAGS for t in tags)
 
 
+_MONTHS = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+
+
+def parse_sort_date(value: Any) -> tuple:
+    """
+    Parse a date-ish string ('2018', 'Jun 2026', 'Jan 2024', ...) into a
+    (year, month) tuple usable as a sort key. Unparseable/empty/TODO values
+    sort as oldest (last, when sorting newest-first).
+    """
+    if is_empty(value):
+        return (0, 0)
+    s = str(value).strip()
+    m = re.match(r"^([A-Za-z]{3,9})\.?\s+(\d{4})$", s)
+    if m:
+        month = _MONTHS.get(m.group(1).lower()[:3], 1)
+        return (int(m.group(2)), month)
+    m = re.match(r"^(\d{4})$", s)
+    if m:
+        return (int(m.group(1)), 1)
+    return (0, 0)
+
+
+def sorted_by_start_date(items: List[Dict], start_date_fn) -> List[Dict]:
+    """Sort items newest-first by the (year, month) key start_date_fn extracts."""
+    return sorted(items, key=lambda it: parse_sort_date(start_date_fn(it)), reverse=True)
+
+
 # ============================================================================
 # LATEX GENERATION
 # ============================================================================
@@ -155,13 +186,16 @@ class ResumeLaTeX:
 
     def entry(self, title_parts: List[str], right: str = "",
               subtitle: str = "", lines: List[str] = None,
+              raw_lines: List[str] = None,
               bullet_items: List[str] = None, gap: str = "0.1in"):
         """
         Generic resume block used by every section.
           title_parts -> joined by ' | ' (caller applies bold/italic)
           right       -> right-aligned italic (usually dates)
           subtitle    -> small italic line under the title
-          lines       -> extra small plain lines
+          lines       -> extra small plain lines (LaTeX-escaped)
+          raw_lines   -> extra small lines already valid LaTeX (e.g. \\href{}{}
+                         links) -- passed through as-is, NOT escaped
           bullet_items-> detail bullets ([] / None = none)
 
         Text lines are joined with '\\\\' (line breaks) and the block ALWAYS
@@ -182,6 +216,9 @@ class ResumeLaTeX:
         for l in (lines or []):
             if not is_empty(l):
                 out.append(f"\\small {escape_latex(l)}")
+        for l in (raw_lines or []):
+            if not is_empty(l):
+                out.append(f"\\small {l}")
 
         bullets = [escape_latex(d) for d in (bullet_items or []) if not is_empty(d)]
 
@@ -243,7 +280,7 @@ class ResumeLaTeX:
             elif not is_empty(city):
                 location = str(city)
 
-        name_block = f"\\textbf{{\\Large {escape_latex(name)}}}"
+        name_block = f"\\textbf{{\\Huge {escape_latex(name)}}}"
         if location:
             name_block += f"\\, \\small \\textit{{{escape_latex(location)}}}"
         self.add(f"\\noindent {name_block} \\hfill \\small {contact_line}\\par\n")
@@ -280,6 +317,7 @@ class ResumeLaTeX:
         items = [e for e in sect.get("items", []) if should_include_item(e)]
         if not items:
             return
+        items = sorted_by_start_date(items, lambda e: e.get("start_date"))
         self.section_header(sect.get("title", "Education"))
         for edu in items:
             honors = [h for h in edu.get("honors", []) if not is_empty(h)]
@@ -309,22 +347,52 @@ class ResumeLaTeX:
                 lines=lines,
             )
 
+    def _links_line(self, links, exclude_github: bool = True) -> Optional[str]:
+        """
+        Build a raw-LaTeX, comma-separated line of hyperlinks from a links
+        list (work_experience) or dict (personal_projects: repo/demo/docs).
+        Empty/TODO entries are dropped. By default github.com links are also
+        dropped since the GitHub profile is already linked in the header.
+        """
+        if isinstance(links, dict):
+            urls = [v for v in links.values() if not is_empty(v)]
+        elif isinstance(links, list):
+            urls = [v for v in links if not is_empty(v)]
+        else:
+            return None
+        if exclude_github:
+            urls = [u for u in urls if "github.com" not in urlparse(u).netloc.lower()]
+        if not urls:
+            return None
+        return ", ".join(format_url(u, urlparse(u).netloc) for u in urls)
+
     def generate_work_experience(self):
         sect = self._section("work_experience", "Experience")
         if not sect:
             return
         self.section_header(sect.get("title", "Experience"))
-        for job in sect.get("items", []):
-            if not should_include_item(job) or is_empty(job.get("company")):
-                continue
+
+        def job_positions(job):
+            return [p for p in job.get("positions", [])
+                    if should_include_item(p) and not is_empty(p.get("title"))]
+
+        jobs = [j for j in sect.get("items", [])
+                if should_include_item(j) and not is_empty(j.get("company"))]
+        jobs = sorted(
+            jobs,
+            key=lambda j: max((parse_sort_date(p.get("start_date")) for p in job_positions(j)), default=(0, 0)),
+            reverse=True,
+        )
+        for job in jobs:
             company = job.get("company")
-            for pos in job.get("positions", []):
-                if not should_include_item(pos) or is_empty(pos.get("title")):
-                    continue
+            positions = sorted_by_start_date(job_positions(job), lambda p: p.get("start_date"))
+            for pos in positions:
+                link_line = self._links_line(pos.get("links", []))
                 self.entry(
                     [f"\\textbf{{{escape_latex(company)}}}",
                      f"\\textbf{{{escape_latex(pos.get('title'))}}}"],
                     right=dates(pos.get("start_date"), pos.get("end_date")),
+                    raw_lines=[link_line] if link_line else None,
                     bullet_items=pos.get("details", []),
                 )
 
@@ -335,6 +403,14 @@ class ResumeLaTeX:
         items = [v for v in sect.get("items", []) if should_include_item(v)]
         if not items:
             return
+
+        def vol_start(v):
+            ds = v.get("dates", [])
+            if not ds or is_empty(ds[0]):
+                return None
+            return str(ds[0]).split(" - ")[0].strip()
+
+        items = sorted_by_start_date(items, vol_start)
         self.section_header(sect.get("title", "Volunteer Experience"))
         for vol in items:
             if is_empty(vol.get("organization")) and is_empty(vol.get("role")):
@@ -355,12 +431,15 @@ class ResumeLaTeX:
                  if should_include_item(p) and not is_empty(p.get("name"))]
         if not items:
             return
+        items = sorted_by_start_date(items, lambda p: p.get("start_date"))
         self.section_header(sect.get("title", "Projects"))
         for proj in items:
+            link_line = self._links_line(proj.get("links", {}))
             self.entry(
                 [f"\\textbf{{{escape_latex(proj.get('name'))}}}"],
                 right=dates(proj.get("start_date"), proj.get("end_date")),
                 subtitle=proj.get("description", ""),
+                raw_lines=[link_line] if link_line else None,
                 bullet_items=proj.get("details", []),
             )
 
@@ -389,12 +468,16 @@ class ResumeLaTeX:
         if not categories:
             return
         self.section_header(sect.get("title", "Skills"))
+        lines = []
         for category, skill_list in categories.items():
             skills = [escape_latex(s) for s in (skill_list or []) if not is_empty(s)]
             if not skills:
                 continue
             cat = category.replace("_", " ").title()
-            self.add(f"\\textbf{{{cat}:}} {', '.join(skills)}\\\\\n")
+            lines.append(f"\\textbf{{{cat}:}} {', '.join(skills)}")
+        if lines:
+            self.add(" \\\\\n".join(lines))
+            self.add("\\par\n")
         self.add("\\vspace{0.04in}\n")
 
     def generate_hobbies(self):
@@ -406,11 +489,15 @@ class ResumeLaTeX:
         if not items:
             return
         self.section_header(sect.get("title", "Hobbies"))
+        lines = []
         for hob in items:
             line = f"\\textbf{{{escape_latex(hob.get('name'))}}}:"
             if not is_empty(hob.get("description")):
                 line += f" {escape_latex(hob.get('description'))}"
-            self.add(line + "\\\\\n")
+            lines.append(line)
+        if lines:
+            self.add(" \\\\\n".join(lines))
+            self.add("\\par\n")
         self.add("\\vspace{0.04in}\n")
 
     # ---- document assembly ---------------------------------------------
@@ -446,10 +533,10 @@ class ResumeLaTeX:
         for fn in (
             self.generate_education,
             self.generate_work_experience,
-            self.generate_volunteer_experience,
             self.generate_skills,
-            self.generate_projects,
             self.generate_achievements,
+            self.generate_projects,
+            self.generate_volunteer_experience,
             self.generate_hobbies,
         ):
             self.buffered(fn)
