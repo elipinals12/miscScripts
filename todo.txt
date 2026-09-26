@@ -1,0 +1,5 @@
+TODO
+/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\
+google drive
+    make Pictures and mc Screenshots backup to google drivee
+    
