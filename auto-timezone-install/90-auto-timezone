@@ -1,0 +1,11 @@
+#!/bin/sh
+# NetworkManager dispatcher hook: re-check the timezone when connectivity changes.
+# Started with --no-block so a slow lookup cannot stall NetworkManager.
+
+case "$2" in
+    up|vpn-up|connectivity-change)
+        exec systemctl start --no-block auto-timezone.service
+        ;;
+esac
+
+exit 0

@@ -1,0 +1,14 @@
+[Unit]
+Description=Set system timezone from IP geolocation
+Documentation=file:/usr/local/bin/auto-timezone
+After=network-online.target systemd-timesyncd.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/auto-timezone
+# The script does its own retry/backoff, so cap total runtime rather than failing fast.
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

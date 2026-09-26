@@ -1,0 +1,85 @@
+#!/bin/bash
+# Set the system timezone from IP-based geolocation.
+#
+# Tries several free geolocation APIs in order and stops at the first that
+# returns a valid tz database name. Mozilla Location Services was retired in
+# 2024, so geoclue's WiFi backend is not usable here; IP lookup is what is left.
+
+set -uo pipefail
+
+log() { logger -t auto-timezone -p daemon.info -- "$*"; }
+warn() { logger -t auto-timezone -p daemon.warning -- "$*"; }
+
+# Each provider prints a bare tz name on stdout, or nothing.
+provider_ipapi_com() {
+    curl -sf --max-time 10 'http://ip-api.com/line/?fields=timezone'
+}
+
+provider_ipinfo_io() {
+    curl -sf --max-time 10 'https://ipinfo.io/json' |
+        sed -n 's/.*"timezone"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
+}
+
+provider_ipapi_co() {
+    curl -sf --max-time 10 'https://ipapi.co/timezone'
+}
+
+provider_ifconfig_co() {
+    curl -sf --max-time 10 'https://ifconfig.co/json' |
+        sed -n 's/.*"timezone"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
+}
+
+valid_tz() {
+    local tz=$1
+    [[ -n $tz ]] || return 1
+    # Reject anything that is not a plain zone name before touching the filesystem.
+    [[ $tz =~ ^[A-Za-z][A-Za-z0-9._+-]*(/[A-Za-z0-9._+-]+)*$ ]] || return 1
+    [[ -f "/usr/share/zoneinfo/$tz" ]]
+}
+
+detect_tz() {
+    local provider tz
+    for provider in provider_ipapi_com provider_ipinfo_io provider_ipapi_co provider_ifconfig_co; do
+        tz=$("$provider" 2>/dev/null | tr -d '[:space:]')
+        if valid_tz "$tz"; then
+            log "resolved $tz via ${provider#provider_}"
+            printf '%s\n' "$tz"
+            return 0
+        fi
+        [[ -n $tz ]] && warn "${provider#provider_} returned unusable value: $tz"
+    done
+    return 1
+}
+
+main() {
+    local current new attempt
+    current=$(timedatectl show --property=Timezone --value)
+
+    # Network may not be usable yet on boot or right after a link comes up.
+    for attempt in 1 2 3 4 5; do
+        if new=$(detect_tz); then
+            break
+        fi
+        new=""
+        ((attempt < 5)) && sleep $((attempt * 5))
+    done
+
+    if [[ -z $new ]]; then
+        warn "no provider returned a usable timezone; leaving $current in place"
+        return 1
+    fi
+
+    if [[ $new == "$current" ]]; then
+        log "timezone already $current"
+        return 0
+    fi
+
+    if timedatectl set-timezone "$new"; then
+        log "timezone changed $current -> $new"
+    else
+        warn "failed to set timezone to $new"
+        return 1
+    fi
+}
+
+main "$@"

@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodically re-check the timezone against IP geolocation
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=1h
+# Catch up after suspend or after the machine was powered off across a move.
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
