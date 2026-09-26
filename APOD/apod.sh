@@ -1,11 +1,24 @@
 #!/usr/bin/env bash
 
 # APOD Wallpaper Setter for Linux Mint (Cinnamon)
-# Location: ~/Desktop/random scripts/APOD/apod.sh
+# Location: ~/scripts/APOD/apod.sh
+
+# ==============================================================================
+# SCRIPT ENABLE/DISABLE TOGGLE
+# Set to 'true' to run the script normally.
+# Set to 'false' to safely disable the script. When false, the script will 
+# exit immediately without downloading anything or changing your wallpaper.
+# ==============================================================================
+ENABLE_SCRIPT=true
+
+if [[ "$ENABLE_SCRIPT" != true ]]; then
+    echo "APOD Wallpaper script is currently disabled. Exiting."
+    exit 0
+fi
 
 set -u
 
-APOD_DIR="$HOME/Desktop/scripts/APOD"
+APOD_DIR="$HOME/scripts/APOD"
 OL_DIR="$APOD_DIR/ol"
 STAMP_FILE="$APOD_DIR/last_date"
 SCRIPT_PATH="$APOD_DIR/apod.sh"
@@ -17,6 +30,9 @@ SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
 SERVICE_FILE="$SYSTEMD_USER_DIR/apod-wallpaper.service"
 TIMER_FILE="$SYSTEMD_USER_DIR/apod-wallpaper.timer"
 LOCK_FILE="$APOD_DIR/.apod.lock"
+
+RETRY_INTERVAL=1   # secs between tries
+RETRY_MAX=180      # give up after this many secs
 
 FORCE=false
 [[ "${1:-}" == "--force" ]] && FORCE=true
@@ -56,16 +72,6 @@ is_today() {
     [[ "$file_date" == "$(date +%Y-%m-%d)" ]]
 }
 
-startup_wait() {
-    local uptime_secs
-    uptime_secs=$(awk '{print int($1)}' /proc/uptime 2>/dev/null || echo 999999)
-
-    if [[ "$uptime_secs" -lt 120 ]]; then
-        log "Startup detected, uptime ${uptime_secs}s. Waiting 30s..."
-        sleep 30
-    fi
-}
-
 write_autostart() {
     mkdir -p "$AUTOSTART_DIR"
 
@@ -77,7 +83,7 @@ Exec=/usr/bin/env bash "$SCRIPT_PATH"
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true
-X-GNOME-Autostart-Delay=10
+X-GNOME-Autostart-Delay=0
 EOF_DESKTOP
 
     chmod +x "$DESKTOP_FILE"
@@ -98,11 +104,10 @@ EOF_SERVICE
 
     cat > "$TIMER_FILE" <<EOF_TIMER
 [Unit]
-Description=Run APOD wallpaper daily and after login
+Description=Run APOD wallpaper daily at 6am
 
 [Timer]
-OnBootSec=2min
-OnUnitActiveSec=1d
+OnCalendar=*-*-* 06:00:00
 Persistent=true
 
 [Install]
@@ -144,74 +149,55 @@ archive_current() {
     mv "$cur_img" "$archive_name"
 }
 
-wait_for_network() {
-    log "Waiting for network..."
+fetch_apod() {
+    local today="$1" cur_img="$2"
+    local tmp="$APOD_DIR/.apod_tmp"
+    local deadline=$((SECONDS + RETRY_MAX))
+    local page rel_url ext full_url
 
-    for _ in $(seq 1 15); do
-        if ping -c 1 -W 2 apod.nasa.gov >/dev/null 2>&1; then
-            log "Network is up."
-            return 0
+    while true; do
+        page=$(curl -fsSL --connect-timeout 5 --max-time 15 "https://apod.nasa.gov/apod/astropix.html" 2>/dev/null || true)
+
+        if [[ -n "$page" ]]; then
+            rel_url=$(printf '%s' "$page" | grep -oP '(?<=<a href=")(image|video)/[^"]+\.(jpg|jpeg|png|gif|mp4|webm|mov)' | head -n 1 || true)
+
+            if [[ -z "$rel_url" ]]; then
+                log "No APOD media link found (page ok). Using fallback."
+                archive_current "$cur_img"
+                set_wallpaper "$FALLBACK_IMG"
+                echo "$today" > "$STAMP_FILE"
+                return 0
+            fi
+
+            full_url="https://apod.nasa.gov/apod/$rel_url"
+            ext="${full_url##*.}"
+            if curl -fsSL --connect-timeout 5 --max-time 60 "$full_url" -o "$tmp" && [[ -s "$tmp" ]]; then
+                break
+            fi
+            rm -f "$tmp"
         fi
-        sleep 4
+
+        if (( SECONDS >= deadline )); then
+            log "Gave up after ${RETRY_MAX}s. Keeping current wallpaper; next boot/6am retries."
+            return 1
+        fi
+        sleep "$RETRY_INTERVAL"
     done
 
-    log "Network not available after about 60s."
-    return 1
-}
-
-fetch_apod() {
-    local today="$1"
-    local page rel_url full_url ext new_img
-
-    log "Fetching APOD page..."
-    page=$(curl -fsSL --max-time 30 "https://apod.nasa.gov/apod/astropix.html" 2>/dev/null || true)
-
-    rel_url=$(printf '%s' "$page" | grep -oP '(?<=<a href=")(image|video)/[^"]+\.(jpg|jpeg|png|gif|mp4|webm|mov)' | head -n 1 || true)
-
-    if [[ -z "$rel_url" ]]; then
-        log "No APOD media link found. Using fallback."
-        startup_wait
-        set_wallpaper "$FALLBACK_IMG"
-        echo "$today" > "$STAMP_FILE"
-        return 0
-    fi
-
-    full_url="https://apod.nasa.gov/apod/$rel_url"
-    ext="${full_url##*.}"
-    ext="${ext%%\?*}"
-    new_img="$APOD_DIR/apod_current.$ext"
-
-    log "Downloading: $full_url"
-
-    if ! curl -fsSL --max-time 60 "$full_url" -o "$new_img"; then
-        rm -f "$new_img"
-        log "Download failed. Using fallback."
-        startup_wait
-        set_wallpaper "$FALLBACK_IMG"
-        return 1
-    fi
-
-    if [[ ! -s "$new_img" ]]; then
-        rm -f "$new_img"
-        log "Downloaded file is empty. Using fallback."
-        startup_wait
-        set_wallpaper "$FALLBACK_IMG"
-        return 1
-    fi
+    archive_current "$cur_img"
 
     case "$ext" in
         mp4|webm|mov)
             log "Today's APOD is a video. Using fallback image."
-            mv "$new_img" "$OL_DIR/apod_${today}_video.$ext" 2>/dev/null || rm -f "$new_img"
-            startup_wait
+            mv "$tmp" "$OL_DIR/apod_${today}_video.$ext"
             set_wallpaper "$FALLBACK_IMG"
             echo "$today" > "$STAMP_FILE"
             return 0
             ;;
     esac
 
-    startup_wait
-    set_wallpaper "$new_img"
+    mv "$tmp" "$APOD_DIR/apod_current.$ext"
+    set_wallpaper "$APOD_DIR/apod_current.$ext"
     echo "$today" > "$STAMP_FILE"
     log "Done. APOD set for $today ($ext)."
 }
@@ -246,19 +232,22 @@ main() {
 
     log "Today: $today | Current image: ${cur_img:-none} | Force: $FORCE"
 
+    # Set existing image immediately so Mint's default background never shows
+    # while we wait/check for a new APOD.
+    if [[ -n "$cur_img" && -f "$cur_img" ]]; then
+        set_wallpaper "$cur_img"
+    else
+        set_wallpaper "$FALLBACK_IMG"
+    fi
+
     if [[ "$FORCE" != true && -n "$cur_img" && -f "$cur_img" && -f "$STAMP_FILE" ]]; then
         if [[ "$(head -n 1 "$STAMP_FILE")" == "$today" ]] && is_today "$cur_img"; then
-            startup_wait
-            set_wallpaper "$cur_img"
             log "Already have today's APOD. Use --force to re-download."
             exit 0
         fi
     fi
 
-    wait_for_network || true
-
-    archive_current "$cur_img"
-    fetch_apod "$today"
+    fetch_apod "$today" "$cur_img"
 }
 
 main "$@"
