@@ -2,7 +2,7 @@
 
 trap 'kill $SHIFT_PID 2>/dev/null; xdotool keyup Up; xdotool keyup Down; xdotool keyup shift; echo "Done."; exit' INT TERM EXIT
 
-HOLD=70
+HOLD=60
 SHIFT_HOLD=30
 SHIFT_PAUSE=3
 
