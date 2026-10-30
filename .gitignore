@@ -1,7 +1,8 @@
 driveBackup/driveBackup.log
 APOD/apod.log
-APOD/last_date
-APOD/apod_current.jpg
+APOD/.apod.lock
+APOD/.apod_tmp
+APOD/apod_current*
 APOD/hubbleUltraDeepFieldBG.png
 APOD/ol/
 APOD/ol_AI_output/
