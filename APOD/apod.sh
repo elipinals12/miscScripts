@@ -19,7 +19,7 @@ APOD_TZ="America/New_York"  # APOD dates follow US Eastern time
 FIT_MODE="fit"              # fit | fill | stretch | center
 BG_COLOR="#000000"          # bars around the image when it doesn't fill the screen
 SET_LOCKSCREEN=true         # KDE only; other desktops share the desktop image
-DAILY_RUN_TIME="06:00"      # systemd timer time (HH:MM)
+DAILY_RUN_TIME="00:30"      # systemd timer time (HH:MM)
 INSTALL_AUTOSTART=true      # run on login
 INSTALL_TIMER=true          # run daily at DAILY_RUN_TIME
 
