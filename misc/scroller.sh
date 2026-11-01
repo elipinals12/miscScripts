@@ -66,6 +66,29 @@ smart_sleep() {
     printf "\r%-50s\r" "" # Clear the countdown line
 }
 
+do_scroll() {
+    local clicks
+    if [ "$SCROLL_TOLERANCE" -eq 0 ]; then
+        clicks=$SCROLL_CLICKS
+    else
+        clicks=$(( SCROLL_CLICKS + (RANDOM % (2 * SCROLL_TOLERANCE + 1)) - SCROLL_TOLERANCE ))
+        [ $clicks -lt 1 ] && clicks=1
+    fi
+    for ((i=0; i<clicks; i++)); do
+        if command -v ydotool >/dev/null && [ -S "${YDOTOOL_SOCKET:-/tmp/.ydotool_socket}" ]; then
+            ydotool mousemove --wheel -x 0 -y -1   # uinput: no Wayland permission prompt
+        else
+            xdotool click 5                        # fallback: triggers KDE prompt on Wayland
+        fi
+        [ $clicks -gt 1 ] && sleep 0.05
+    done
+}
+
+# Initial delay before first scroll
+INITIAL_DELAY=3
+smart_sleep "$INITIAL_DELAY"
+do_scroll
+
 while true; do
     # Calculate wait time with tolerance
     if [ "$TOLERANCE" -eq 0 ]; then
@@ -79,18 +102,5 @@ while true; do
     # Run the live countdown sleep
     smart_sleep "$total_sleep"
 
-    # Calculate actual scroll clicks for this iteration with tolerance
-    if [ "$SCROLL_TOLERANCE" -eq 0 ]; then
-        clicks=$SCROLL_CLICKS
-    else
-        scroll_offset=$(( (RANDOM % (2 * SCROLL_TOLERANCE + 1)) - SCROLL_TOLERANCE ))
-        clicks=$(( SCROLL_CLICKS + scroll_offset ))
-        [ $clicks -lt 1 ] && clicks=1 # Ensure at least 1 click happens
-    fi
-
-    # Perform the mouse scroll down (Button 5 is scroll down)
-    for ((i=0; i<clicks; i++)); do
-        xdotool click 5
-        [ $clicks -gt 1 ] && sleep 0.05 # Tiny pause between multiple clicks
-    done
+    do_scroll
 done
