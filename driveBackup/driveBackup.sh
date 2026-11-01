@@ -23,8 +23,11 @@ MAX_ATTEMPTS=3
 MAX_RUNTIME_MIN=50
 
 # --- DESTINATION ---
-# Main destination inside your Google Drive
-DEST_ROOT="gdrive:George - Framework Laptop"
+# Top-level Google Drive folder to upload into. On a terminal run the script asks
+# you to confirm it (and rewrites this line if you enter a different name).
+# Timer runs (no terminal) just use this value.
+DEST_NAME="Snape - Louse Desktop"
+DEST_ROOT=""
 
 # --- BACKUP JOBS ---
 # Format: "Friendly Name | Local Source | Drive Destination | Exclusions (comma-separated)"
@@ -37,8 +40,8 @@ BACKUP_JOBS=(
   "Pictures               | $HOME/Pictures                                                                                              | Pictures              | "
   "Music                  | $HOME/Music                                                                                                 | Music                 | "
   "Scripts                | $HOME/scripts                                                                                               | scripts               | "
-  "Minecraft screenshots | $HOME/.var/app/org.prismlauncher.PrismLauncher/data/PrismLauncher/instances/1.21.6/minecraft/screenshots    | minecraft/screenshots | "
-  "Minecraft saves       | $HOME/.var/app/org.prismlauncher.PrismLauncher/data/PrismLauncher/instances/1.21.6/minecraft/saves          | minecraft/saves       | "
+  "Minecraft screenshots | $HOME/.local/share/PrismLauncher/instances/26.3/minecraft/screenshots    | minecraft/screenshots | "
+  "Minecraft saves       | $HOME/.local/share/PrismLauncher/instances/26.3/minecraft/saves          | minecraft/saves       | "
 )
 
 # ==============================================================================
@@ -66,9 +69,139 @@ say() {
 notify() {
   local title="$1"
   local msg="$2"
-  export DISPLAY=:0
-  export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
-  command -v notify-send >/dev/null && notify-send "$title" "$msg" -i drive-harddisk -t 5000 || true
+  # Works from systemd (no session env) on KDE Plasma / Cinnamon / GNOME, X11 or Wayland.
+  export DISPLAY="${DISPLAY:-:0}"
+  export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/$(id -u)/bus}"
+  if command -v notify-send >/dev/null; then
+    notify-send "$title" "$msg" -i drive-harddisk -t 5000 || true
+  elif command -v kdialog >/dev/null; then
+    kdialog --passivepopup "$msg" 8 --title "$title" || true
+  fi
+}
+
+# ------------------------------------------------------------------------------
+# Environment detection + prerequisites
+# Only prompts (y/N) to install missing software, and only when run from a
+# terminal. Under systemd (no TTY) it never asks; it just logs and carries on.
+# ------------------------------------------------------------------------------
+detect_desktop() {
+  local de="${XDG_CURRENT_DESKTOP:-${DESKTOP_SESSION:-unknown}}"
+  case "${de,,}" in
+    *kde*|*plasma*) DESKTOP="KDE" ;;
+    *cinnamon*)     DESKTOP="Cinnamon" ;;
+    *gnome*)        DESKTOP="GNOME" ;;
+    *)              DESKTOP="$de" ;;
+  esac
+}
+
+detect_pkg_manager() {
+  if   command -v apt-get >/dev/null; then PKG_MGR=apt
+  elif command -v dnf     >/dev/null; then PKG_MGR=dnf
+  elif command -v pacman  >/dev/null; then PKG_MGR=pacman
+  elif command -v zypper  >/dev/null; then PKG_MGR=zypper
+  else PKG_MGR=""
+  fi
+}
+
+# Map a command to the package that provides it for the detected package manager.
+pkg_for() {
+  case "$PKG_MGR:$1" in
+    apt:rclone|dnf:rclone|pacman:rclone|zypper:rclone) echo rclone ;;
+    apt:notify-send)    echo libnotify-bin ;;
+    dnf:notify-send|zypper:notify-send) echo libnotify ;;
+    pacman:notify-send) echo libnotify ;;
+    apt:ping)           echo iputils-ping ;;
+    dnf:ping|pacman:ping|zypper:ping) echo iputils ;;
+    *:flock)            echo util-linux ;;
+    *) echo "" ;;
+  esac
+}
+
+install_pkgs() {
+  case "$PKG_MGR" in
+    apt)    sudo apt-get install -y "$@" ;;
+    dnf)    sudo dnf install -y "$@" ;;
+    pacman) sudo pacman -S --needed --noconfirm "$@" ;;
+    zypper) sudo zypper install -y "$@" ;;
+  esac
+}
+
+choose_dest() {
+  if [[ -t 0 ]]; then
+    local ans yn
+    echo "Current Drive folder is set to: \"$DEST_NAME\" (FYI)"
+    read -r -p "Is this correct? [Y/n] " ans
+    if [[ "$ans" =~ ^[Nn] ]]; then
+      while true; do
+        read -r -p "Drive folder name: " ans
+        [[ -n "$ans" ]] || { echo "Empty name."; continue; }
+        if rclone lsf --dirs-only gdrive: 2>/dev/null | grep -qxF "$ans/"; then
+          echo "Folder exists in Drive."
+          break
+        fi
+        echo "'$ans' does not exist in Drive yet."
+        read -r -p "Typed correctly? Create it \"$ans\"? [y/N] " yn
+        if [[ "$yn" =~ ^[Yy]$ ]]; then
+          rclone mkdir "gdrive:$ans" || { echo "Could not create folder."; exit 1; }
+          break
+        fi
+      done
+      DEST_NAME="$ans"
+      # Persist as the new default at the top of this script.
+      local esc=${ans//\\/\\\\}; esc=${esc//&/\\&}; esc=${esc//|/\\|}
+      sed -i "s|^DEST_NAME=.*|DEST_NAME=\"$esc\"|" "$SCRIPT_PATH"
+    fi
+  fi
+  DEST_ROOT="gdrive:$DEST_NAME"
+}
+
+check_prereqs() {
+  detect_desktop
+  detect_pkg_manager
+  say "System: ${DESKTOP} desktop, package manager: ${PKG_MGR:-none}"
+
+  local missing=() pkgs=() cmd pkg
+  for cmd in rclone flock ping systemctl; do
+    command -v "$cmd" >/dev/null || missing+=("$cmd")
+  done
+  # notify-send is optional (notifications only); kdialog also counts on KDE.
+  if ! command -v notify-send >/dev/null && ! command -v kdialog >/dev/null; then
+    missing+=("notify-send")
+  fi
+
+  if (( ${#missing[@]} > 0 )); then
+    for cmd in "${missing[@]}"; do
+      pkg=$(pkg_for "$cmd")
+      [[ -n "$pkg" ]] && pkgs+=("$pkg")
+    done
+    say "Missing: ${missing[*]}"
+    if [[ -t 0 && -n "$PKG_MGR" && ${#pkgs[@]} -gt 0 ]]; then
+      read -r -p "Install ${pkgs[*]} with $PKG_MGR now? [y/N] " ans
+      if [[ "$ans" =~ ^[Yy]$ ]]; then
+        install_pkgs "${pkgs[@]}" || say "Install failed."
+      fi
+    else
+      log_error "missing prerequisites: ${missing[*]} (run script from a terminal to install)"
+    fi
+    # Only rclone, flock, systemctl are fatal; ping/notify degrade gracefully.
+    for cmd in rclone flock; do
+      command -v "$cmd" >/dev/null || { say "Cannot continue without $cmd."; exit 1; }
+    done
+  fi
+
+  # rclone remote "gdrive" must exist (one-time browser login).
+  if ! rclone listremotes 2>/dev/null | grep -q '^gdrive:$'; then
+    log_error "rclone remote 'gdrive' not configured"
+    if [[ -t 0 ]]; then
+      say "rclone remote 'gdrive' is not set up."
+      read -r -p "Run 'rclone config' now? (create a Google Drive remote named gdrive) [y/N] " ans
+      [[ "$ans" =~ ^[Yy]$ ]] && rclone config
+      rclone listremotes 2>/dev/null | grep -q '^gdrive:$' || exit 1
+    else
+      notify "⚠️ Google Drive Backup" "rclone remote 'gdrive' not configured. Run the script in a terminal."
+      exit 1
+    fi
+  fi
 }
 
 log_ok() {
@@ -237,6 +370,9 @@ execute_sync() {
 
 main() {
   chmod +x "$SCRIPT_PATH" 2>/dev/null || true
+
+  check_prereqs
+  choose_dest
 
   exec 9>"$LOCK_FILE"
   if ! flock -n 9; then
