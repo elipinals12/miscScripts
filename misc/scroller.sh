@@ -13,15 +13,43 @@ SCROLL_CLICKS=3              # Base number of scroll clicks (Button 5)
 SCROLL_TOLERANCE=1           # Plus or minus tolerance for scroll clicks
 # =======================================================
 
-# Parse command line arguments for test mode (-t or --test)
+# Saved overrides from edit mode
+CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/scroller.conf"
+[ -f "$CONFIG_FILE" ] && source "$CONFIG_FILE"
+
+edit_mode() {
+    local vars=(NORMAL_WAIT_TIME NORMAL_WAIT_TOLERANCE SCROLL_CLICKS SCROLL_TOLERANCE)
+    local labels=("Wait time (s)" "Wait tolerance (±s)" "Scroll clicks" "Scroll tolerance (±clicks)")
+    echo "Edit mode: Enter = keep current value"
+    local i v input
+    for i in "${!vars[@]}"; do
+        v=${vars[$i]}
+        while true; do
+            read -r -p "${labels[$i]} [${!v}]: " input
+            [ -z "$input" ] && break
+            if [[ "$input" =~ ^[0-9]+$ ]]; then printf -v "$v" '%s' "$input"; break; fi
+            echo "  Enter a non-negative integer."
+        done
+    done
+    mkdir -p "$(dirname "$CONFIG_FILE")"
+    for v in "${vars[@]}"; do echo "$v=${!v}"; done > "$CONFIG_FILE"
+    echo "Saved to $CONFIG_FILE"
+    echo ""
+}
+
+# Parse command line arguments
 TEST_MODE=false
+EDIT_MODE=false
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         -t|--test) TEST_MODE=true ;;
-        *) echo "Unknown option: $1"; echo "Usage: $0 [-t|--test]"; exit 1 ;;
+        -e|--edit) EDIT_MODE=true ;;
+        *) echo "Unknown option: $1"; echo "Usage: $0 [-t|--test] [-e|--edit]"; exit 1 ;;
     esac
     shift
 done
+
+[ "$EDIT_MODE" = true ] && edit_mode
 
 # Determine active wait settings
 if [ "$TEST_MODE" = true ]; then
