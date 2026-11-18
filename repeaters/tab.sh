@@ -1,25 +1,21 @@
 #!/usr/bin/env bash
 
 # ==================== CONFIGURATION ====================
-# 1. Wait Time Settings (Time between scrolls, in seconds)
-NORMAL_WAIT_TIME=215         # Base time for normal mode
-NORMAL_WAIT_TOLERANCE=29     # Plus or minus tolerance for normal wait
+# 1. Wait Time Settings (Time between actions, in seconds)
+NORMAL_WAIT_TIME=28          # Base time for normal mode
+NORMAL_WAIT_TOLERANCE=9      # Plus or minus tolerance for normal wait
 
 TEST_WAIT_TIME=3             # Base time for test mode
 TEST_WAIT_TOLERANCE=0        # Plus or minus tolerance for test mode (0 = flat)
-
-# 2. Scroll Click Settings (Number of mouse wheel clicks per action)
-SCROLL_CLICKS=3              # Base number of scroll clicks (Button 5)
-SCROLL_TOLERANCE=1           # Plus or minus tolerance for scroll clicks
 # =======================================================
 
 # Saved overrides from edit mode
-CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/scroller.conf"
+CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/tab-enter.conf"
 [ -f "$CONFIG_FILE" ] && source "$CONFIG_FILE"
 
 edit_mode() {
-    local vars=(NORMAL_WAIT_TIME NORMAL_WAIT_TOLERANCE SCROLL_CLICKS SCROLL_TOLERANCE)
-    local labels=("Wait time (s)" "Wait tolerance (±s)" "Scroll clicks" "Scroll tolerance (±clicks)")
+    local vars=(NORMAL_WAIT_TIME NORMAL_WAIT_TOLERANCE)
+    local labels=("Wait time (s)" "Wait tolerance (±s)")
     echo "Edit mode: Enter = keep current value"
     local i v input
     for i in "${!vars[@]}"; do
@@ -65,11 +61,11 @@ fi
 # Clear start screen and print status
 clear
 echo "========================================"
-echo "         CHILL-SCROLL SCRIPT            "
+echo "          RIGHT ARROW AUTOMATOR         "
 echo "========================================"
 echo " Status: RUNNING IN [$MODE_NAME]"
 echo " Wait Time: ${BASE_TIME}s (Tolerance: ±${TOLERANCE}s)"
-echo " Scroll Amount: ${SCROLL_CLICKS} clicks (Tolerance: ±${SCROLL_TOLERANCE})"
+echo " Action: Press Right Arrow"
 echo " Controls: Press 'p' to pause, 's' to stop"
 echo "========================================"
 echo ""
@@ -78,7 +74,7 @@ echo ""
 smart_sleep() {
     local remaining=$1
     while [ $remaining -gt 0 ]; do
-        printf "\rNext scroll in: %3ds | [p]ause, [s]top   " "$remaining"
+        printf "\rNext action in: %3ds | [p]ause, [s]top    " "$remaining"
         if read -t 1 -n 1 key; then
             if [[ "$key" == "s" || "$key" == "S" ]]; then
                 echo -e "\n\nStopped by user."
@@ -94,28 +90,20 @@ smart_sleep() {
     printf "\r%-50s\r" "" # Clear the countdown line
 }
 
-do_scroll() {
-    local clicks
-    if [ "$SCROLL_TOLERANCE" -eq 0 ]; then
-        clicks=$SCROLL_CLICKS
+do_action() {
+    if command -v ydotool >/dev/null && [ -S "${YDOTOOL_SOCKET:-/tmp/.ydotool_socket}" ]; then
+        # ydotool key code for Right Arrow is 106 (KEY_RIGHT)
+        ydotool key 106:1 106:0
     else
-        clicks=$(( SCROLL_CLICKS + (RANDOM % (2 * SCROLL_TOLERANCE + 1)) - SCROLL_TOLERANCE ))
-        [ $clicks -lt 1 ] && clicks=1
+        # xdotool key for Right Arrow
+        xdotool key Right
     fi
-    for ((i=0; i<clicks; i++)); do
-        if command -v ydotool >/dev/null && [ -S "${YDOTOOL_SOCKET:-/tmp/.ydotool_socket}" ]; then
-            ydotool mousemove --wheel -x 0 -y -1   # uinput: no Wayland permission prompt
-        else
-            xdotool click 5                        # fallback: triggers KDE prompt on Wayland
-        fi
-        [ $clicks -gt 1 ] && sleep 0.05
-    done
 }
 
-# Initial delay before first scroll
+# Initial delay before first action
 INITIAL_DELAY=3
 smart_sleep "$INITIAL_DELAY"
-do_scroll
+do_action
 
 while true; do
     # Calculate wait time with tolerance
@@ -130,5 +118,5 @@ while true; do
     # Run the live countdown sleep
     smart_sleep "$total_sleep"
 
-    do_scroll
+    do_action
 done

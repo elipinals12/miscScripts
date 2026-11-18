@@ -9,7 +9,7 @@
 # ==============================================================================
 # CONFIG
 # ==============================================================================
-ENABLE_SCRIPT=true          # false = exit immediately, touch nothing
+ENABLE_SCRIPT=false          # false = exit immediately, touch nothing
 
 # RSS feed published by science.nasa.gov (the old apod.nasa.gov now redirects
 # there). Each <item> has an <apod:hdurl> pointing at the image.
